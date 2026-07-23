@@ -1,0 +1,6 @@
+Tenant Management
+Copyright 2026 Open-AI-Factory contributors
+
+This repository contains an experimental Capsule/KAI tenant console and quota-control prototypes.
+Capsule, Kubernetes, KAI, Kueue, Grafana, NVIDIA, PyTorch and Playwright are separate projects.
+Their names identify integration targets and do not imply endorsement or bundled software.

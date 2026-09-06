@@ -1,0 +1,9 @@
+{
+  "poolKey": "mig-demo", "unit": "device", "capacity": 4, "source": "dummy-profiler",
+  "headroomRatio": 0, "leadSeconds": 30, "cooldownSeconds": 30, "downHoldSeconds": 60,
+  "maxAgeSeconds": 120, "maxSampleGapSeconds": 30, "minConfidence": 0.8,
+  "tenants": [
+    {"name": "A", "uid": "tenant-a", "minimum": 1, "maximum": 3, "current": 1},
+    {"name": "B", "uid": "tenant-b", "minimum": 1, "maximum": 3, "current": 1}
+  ]
+}

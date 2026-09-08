@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Factory · 예측 쿼터 실험실</title><link rel="stylesheet" href="/quota_simulator.css"><script src="/quota_simulator.js" defer></script></head>
+<body><main>
+<header><div class="eyebrow">AI FACTORY / TENANT CONTROL LAB</div><div class="titleline"><h1>예측으로 조절하는 테넌트 쿼터</h1><span class="badge">LOCAL SIMULATION</span></div><p>외부 프로파일러의 예측을 받아, 변경할 <strong>시점</strong>과 <strong>양</strong>을 결정합니다.</p></header>
+<div class="notice">모의 예산만 변경합니다. 실제 GPU 할당·클러스터 연결·성능 보장은 포함하지 않습니다.</div>
+<section class="flow" aria-label="데이터 흐름"><div><small>01 / INPUT</small><h2>외부 예측 수신</h2><p>테넌트 · 예상 개수 · 사용 시간 · 신뢰도</p><span id="receipt">아직 수신하지 않음</span></div><div><small>02 / CONTROL</small><h2>언제, 얼마나</h2><p id="policy">정책 불러오는 중</p><span>가상 시계 <b id="clock">—</b></span></div><div><small>03 / RESULT</small><h2>테넌트별 모의 예산</h2><p>최소 보장량과 전체 용량을 지킵니다.</p><span id="budget">—</span><div class="capacity" id="capacity"></div></div></section>
+<section class="scenario"><div><small>REPLAY / <span id="progress">0 / 13</span></small><h2 id="step-label">A·B 수요 변화 실험</h2><p>다음 단계를 누르면 예측 수신과 가상 시간이 함께 진행됩니다.</p></div><div class="buttons"><button id="next">다음 단계</button><button id="reset" class="secondary">처음부터</button></div></section>
+<div id="message" role="status" aria-live="polite"></div>
+<section id="tenants" class="tenants" aria-label="테넌트별 판단"></section>
+<section class="history"><div class="section-title"><h2>변경 판단 기록</h2><span>최근 12건 · 개수 단위</span></div><div class="table-wrap"><table><thead><tr><th>가상 시각</th><th>테넌트</th><th>필요 예산</th><th>판단 목표</th><th>모의 예산</th><th>결과 / 이유</th></tr></thead><tbody id="history"></tbody></table></div></section>
+<details><summary>외부 모듈 입력을 직접 바꿔보기</summary><p>예측 JSON을 HTTP API로 전송합니다. 시간과 작업 유무도 모의 값입니다. 수동 실험 후 기본 시나리오는 ‘처음부터’로 초기화하세요.</p><div class="manual"><label>예측 JSON<textarea id="packet" spellcheck="false" rows="15"></textarea></label><div><h3>모의 관측 상태</h3><div id="observations"></div><div class="buttons"><button id="send">예측 전송</button><button id="evaluate" class="secondary">현재 시점 판단</button><button id="advance" class="secondary">30초 진행 후 판단</button></div><p class="hint">별도 프로세스에서도 <code>dummy_profiler.py</code>로 데이터를 보낼 수 있습니다. API 수신 성공은 쿼터 변경 성공과 다릅니다.</p></div></div></details>
+<footer>실험용 기본값 · 동종 GPU/MIG 장치 개수 · 재시작 시 기록 초기화</footer>
+</main></body></html>

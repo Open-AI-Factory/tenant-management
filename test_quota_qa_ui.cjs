@@ -1,0 +1,87 @@
+const {chromium}=require('playwright');
+const {spawn}=require('child_process');
+const assert=require('assert/strict');
+const path=require('path');
+(async()=>{
+  const server=spawn('python',['-B','-X','utf8','quota_simulator.py','--port','0'],{cwd:__dirname,windowsHide:true});
+  let browser;
+  try {
+    const url=await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('Startup timeout')),10000);
+      server.stdout.on('data',c=>{const m=String(c).match(/http:\/\/127\.0\.0\.1:\d+/);if(m){clearTimeout(timer);resolve(m[0]);}});
+      server.on('error',reject);server.stderr.on('data',c=>process.stderr.write(c));
+    });
+    browser=await chromium.launch({headless:true,channel:'chrome'});
+    const page=await browser.newPage({viewport:{width:1280,height:1000}}),errors=[];
+    page.on('pageerror',e=>errors.push(String(e)));
+    await page.goto(url);await page.locator('#packet').waitFor({state:'attached'});
+    await page.waitForFunction(()=>document.querySelector('#packet').value.length>0);
+    await page.locator('summary').click();
+    const a=page.getByRole('combobox',{name:'Tenant A 모의 작업 상태'});
+    const b=page.getByRole('combobox',{name:'Tenant B 모의 작업 상태'});
+    await a.selectOption('idle');await b.selectOption('busy');
+    const packet=await page.locator('#packet').inputValue();
+    await page.waitForResponse(r=>r.url().endsWith('/api/state'));
+    assert.equal(await a.inputValue(),'idle','poll must retain unsubmitted observation');
+    assert.equal(await page.locator('#packet').inputValue(),packet,'poll must retain edited packet');
+    await page.getByRole('button',{name:'예측 전송'}).click();
+    await page.waitForFunction(()=>document.querySelector('#receipt').textContent.includes('Accepted'));
+    const selections={A:await a.inputValue(),B:await b.inputValue()};console.log(JSON.stringify({afterReceive:selections}));
+    assert.deepEqual(selections,{A:'idle',B:'busy'},'receiving a forecast must retain pending observation inputs');
+    await page.getByRole('button',{name:'30초 진행 후 판단'}).click();
+    await page.waitForFunction(()=>document.querySelector('#quota-a').textContent==='3');
+    assert.equal(await page.locator('#quota-b').innerText(),'1');
+    await page.getByRole('button',{name:'예측 전송'}).click();
+    await page.waitForFunction(()=>document.querySelector('#receipt').textContent.includes('Duplicate'));
+    const state=await (await page.request.get(url+'/api/state')).json();assert.equal(state.receivedEvents,1);
+    await page.getByRole('button',{name:'처음부터'}).click();
+    await page.waitForFunction(()=>document.querySelector('#quota-a').textContent==='1');
+    assert.equal(await a.inputValue(),'unknown');
+    assert.equal(await b.inputValue(),'unknown');
+    let captured,release,claimed=false;
+    const capturedPoll=new Promise(resolve=>captured=resolve);
+    const releasePoll=new Promise(resolve=>release=resolve);
+    await page.route('**/api/state',async route=>{
+      if(claimed)return route.continue();
+      claimed=true;const response=await route.fetch();captured();await releasePoll;await route.fulfill({response});
+    });
+    await capturedPoll;
+    await page.getByRole('button',{name:'다음 단계'}).click();
+    await page.waitForFunction(()=>document.querySelector('#progress').textContent.startsWith('1 /'));
+    await page.getByRole('button',{name:'다음 단계'}).click();
+    await page.waitForFunction(()=>document.querySelector('#quota-a').textContent==='3');
+    const staleDelivered=page.waitForResponse(r=>r.url().endsWith('/api/state'));
+    release();await staleDelivered;
+    // Queue a browser task after fetch/render microtasks, without a fixed sleep.
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.equal(await page.locator('#quota-a').innerText(),'3','a delayed old poll must not roll back a completed action');
+    assert.match(await page.locator('#progress').innerText(),/^2 \//);
+    await page.unroute('**/api/state');
+    let outage=true;
+    await page.route('**/api/state',route=>outage?
+      route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'temporary outage'})}):route.continue());
+    await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('서버 연결 미확인'));
+    outage=false;
+    await page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.equal(await page.locator('#message').innerText(),'','successful recovery must clear the connection warning');
+    assert.equal(await page.locator('#quota-a').innerText(),'3');
+    await page.locator('#packet').fill('{"unexpected":true}');
+    await page.getByRole('button',{name:'예측 전송'}).click();
+    await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('Invalid forecast fields'));
+    await page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.match(await page.locator('#message').innerText(),/Invalid forecast fields/,'polling must not erase an unapplied command error');
+    outage=true;
+    await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('서버 연결 미확인'));
+    outage=false;
+    await page.waitForResponse(r=>r.url().endsWith('/api/state')&&r.status()===200);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.match(await page.locator('#message').innerText(),/Invalid forecast fields/,'connection recovery must preserve a failed command');
+    assert.doesNotMatch(await page.locator('#message').innerText(),/서버 연결 미확인/);
+    await page.unroute('**/api/state');
+    assert.deepEqual(errors,[]);
+    await page.screenshot({path:path.join(__dirname,'work','qa-manual-ui.png'),fullPage:true});
+    console.log(JSON.stringify({passed:10,checks:['poll observation preservation','poll packet preservation','receive observation preservation','manual timed quota change','manual duplicate receipt','reset clears observations','delayed poll cannot revert completed action','connection recovery clears warning','healthy poll retains command error','connection recovery retains command error'],pageErrors:errors},null,2));
+  } finally {if(browser)await browser.close();server.kill();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

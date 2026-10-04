@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Capsule 테넌트 GPU 예산</title><link rel="stylesheet" href="/kueue-quota/kueue_quota.css"><script src="/kueue-quota/kueue_quota.js" defer></script></head>
+<body><main>
+<header><a href="/">← 테넌트 관리로 돌아가기</a><span>AI FACTORY · 관리자</span></header>
+<h1>테넌트 GPU 예산</h1>
+<p class="intro">Capsule 테넌트에 연결된 정책으로 변경 시점과 양을 판단하고, 실제 Kueue 큐에서 결과를 확인합니다.</p>
+<p id="notice" class="notice">실제 Kueue 테스트 큐 · 작업 접수 잠금. 예측은 시험용 임의값입니다. 이 화면의 쿼터는 GPU 할당 수나 성능 보장이 아닙니다.</p>
+<div class="status"><span id="mode">로그인 확인 중</span><span id="updated">조회 대기</span><button id="refresh" type="button">다시 조회</button></div>
+<p id="message" role="status" aria-live="polite"></p>
+<section id="tenants" class="cards" aria-label="Capsule 테넌트 정책과 실제 예산"></section>
+<section class="input"><h2>외부 프로파일러 입력 시험</h2><p>더미 예측을 만들거나 JSON을 붙여넣어 전송하세요. 수신 후 서버가 정책에 따라 실제 변경을 판단합니다.</p>
+<div class="fields"><label>테넌트<select id="tenant"></select></label><label>예상 GPU 장치 수<input id="demand" type="number" min="0" step="0.1" value="2"></label><label>수요 시작까지(초)<input id="delay" type="number" min="0" step="1" value="30"></label></div>
+<button id="prepare" type="button">더미 예측 만들기</button>
+<label class="packet-label" for="packet">예측 JSON</label><textarea id="packet" rows="13" spellcheck="false" aria-label="예측 JSON"></textarea>
+<button id="send" type="button">예측 전송</button><p class="hint">시각은 서버 UTC 기준입니다. 축소는 새로운 낮은 수요 표본이 정책의 확인 시간 동안 이어져야 적용됩니다. 같은 JSON 재전송은 중복 처리됩니다.</p>
+</section>
+<footer>Capsule 소속·정책 → Kueue 접수 예산 → 기존 KAI 배치 경로. 현재 테스트 테넌트의 GPU 실행은 잠겨 있습니다.</footer>
+</main></body></html>

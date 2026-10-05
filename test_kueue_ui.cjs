@@ -1,0 +1,58 @@
+'use strict';
+const {chromium}=require('playwright');
+const {spawn}=require('child_process');
+const assert=require('assert/strict');
+const path=require('path');
+(async()=>{
+  const server=spawn('python',['-B','-X','utf8','test_kueue_web_support.py'],{cwd:__dirname,windowsHide:true});
+  let browser;
+  try{
+    const url=await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('startup timeout')),10000);
+      server.stdout.on('data',c=>{const m=String(c).match(/http:\/\/127\.0\.0\.1:\d+/);if(m){clearTimeout(timer);resolve(m[0]);}});
+      server.on('error',reject);server.stderr.on('data',c=>process.stderr.write(c));
+    });
+    browser=await chromium.launch({headless:true,channel:'chrome'});
+    const ctx=await browser.newContext({viewport:{width:1440,height:1100}});
+    await ctx.addCookies([{name:'grafana_session',value:'admin',url}]);
+    const page=await ctx.newPage(),errors=[];
+    page.on('pageerror',e=>errors.push(String(e)));
+    await page.goto(url);await page.locator('#workspace').waitFor({state:'visible'});
+    await page.getByRole('link',{name:'테넌트 GPU 예산',exact:true}).click();
+    await page.locator('#quota-example-tenant-a').waitFor();
+    assert.equal(await page.locator('#quota-example-tenant-a').innerText(),'1');
+    assert.match(await page.locator('#card-example-tenant-a').innerText(),/t-a/);
+    assert.match(await page.locator('#card-example-tenant-a').innerText(),/미확인/);
+    assert.match(await page.locator('#notice').innerText(),/접수 잠금/);
+    await page.locator('#demand').fill('2');await page.locator('#prepare').click();
+    const packet=await page.locator('#packet').inputValue();
+    assert.equal(JSON.parse(packet).poolKey,'example-gpu-pool');
+    await page.locator('#send').click();
+    await page.waitForFunction(()=>document.querySelector('#quota-example-tenant-a').textContent==='2');
+    assert.equal(await page.locator('#quota-example-tenant-b').innerText(),'0');
+    const actual=await ctx.request.get(url+'/api/kueue-quota/state');
+    assert.equal((await actual.json()).tenants['t-a'].actual.quota,2);
+    assert.match(await page.locator('#phase-example-tenant-a').innerText(),/확인/);
+    await page.locator('#send').click();await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('중복'));
+    assert.equal(await page.locator('#packet').inputValue(),packet);
+    await page.locator('#packet').fill('{"bad":true}');await page.locator('#send').click();
+    await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('등록된'));
+    assert.equal(await page.locator('#packet').inputValue(),'{"bad":true}');
+    await page.route('**/api/kueue-quota/state',async r=>{await new Promise(resolve=>setTimeout(resolve,700));await r.continue();});
+    await page.locator('#packet').fill('manual input retained while polling');
+    await page.waitForTimeout(2400);
+    assert.equal(await page.locator('#packet').inputValue(),'manual input retained while polling');
+    await page.unrouteAll({behavior:'wait'});
+    await page.screenshot({path:path.join(__dirname,'work','kueue-quota-desktop.png'),fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await page.screenshot({path:path.join(__dirname,'work','kueue-quota-mobile.png'),fullPage:true});
+    await page.getByRole('link',{name:'테넌트 관리로 돌아가기'}).click();await page.locator('#workspace').waitFor({state:'visible'});
+    await ctx.clearCookies();await ctx.addCookies([{name:'grafana_session',value:'member',url}]);
+    await page.reload();await page.locator('#workspace').waitFor({state:'visible'});
+    assert.equal(await page.getByRole('link',{name:'테넌트 GPU 예산',exact:true}).isVisible(),false);
+    assert.equal((await ctx.request.get(url+'/api/kueue-quota/state')).status(),403);
+    assert.deepEqual(errors,[]);
+    console.log(JSON.stringify({passed:12,pageErrors:errors,viewports:[1440,390],checks:['admin menu','Capsule identity/policy','unknown effective','held queue','real handler growth','B preservation','API readback','duplicate','error/input retention','late poll/input retention','mobile/return','member denial']},null,2));
+  }finally{if(browser)await browser.close();server.kill();}
+})().catch(e=>{console.error(e);process.exitCode=1;});
